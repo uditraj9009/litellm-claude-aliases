@@ -10,6 +10,7 @@ config file LiteLLM will use, then delegates to the upstream ``litellm`` CLI.
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import List, Optional, Tuple
 
@@ -50,11 +51,19 @@ def parse_args(argv: List[str]) -> Tuple[Optional[str], List[str]]:
     return config_path, passthrough
 
 
-def main() -> int:
-    config_path, passthrough = parse_args(sys.argv[1:])
+def startup_hook():
+    """Called during LiteLLM worker startup to apply patches.
 
+    This runs AFTER the FastAPI app is created, so patching works correctly.
+    """
+    # Load config first if not already loaded
+    if not aliases.is_enabled():
+        config_path = os.environ.get("LITELLM_CLI_CONFIG") or os.environ.get("LITELLM_CONFIG")
+        if config_path:
+            load_from_yaml(config_path)
+
+    # Apply patches
     bootstrap()
-    load_from_yaml(config_path)
 
     if aliases.is_enabled():
         print(
@@ -65,8 +74,20 @@ def main() -> int:
     else:
         print("litellm_claude_aliases: disabled (no model_aliases in config)")
 
-    # Delegate to the upstream litellm CLI. We re-exec so the child process
-    # inherits all of LiteLLM's signal handling and argument parsing.
+
+def main() -> int:
+    config_path, passthrough = parse_args(sys.argv[1:])
+
+    # Load config early so we can use it in the startup hook
+    if config_path:
+        os.environ["LITELLM_CLI_CONFIG"] = config_path
+        load_from_yaml(config_path)
+
+    # Set the startup hook to apply patches at the right time
+    # This runs AFTER the FastAPI app is created but BEFORE requests are handled
+    os.environ["LITELLM_WORKER_STARTUP_HOOKS"] = "litellm_claude_aliases.cli:startup_hook"
+
+    # Delegate to the upstream litellm CLI
     from litellm.proxy.proxy_cli import run_server
 
     sys.argv = ["litellm"] + passthrough
