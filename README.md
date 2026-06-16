@@ -61,6 +61,19 @@ All other `litellm` flags pass through unchanged.
 If `model_aliases.enabled` is `false` (or the block is missing), the wrapper is a
 no-op and `litellm` runs as if the package weren't installed.
 
+## Notes on auth headers
+
+LiteLLM's `os.environ/FOO` syntax for resolving env vars is **only** applied to
+the `api_key` field of a `litellm_params` block. It is **not** applied to
+`extra_headers` values. Putting a placeholder like
+`X-Api-Key: "os.environ/FOO"` in `extra_headers` sends the literal string and
+fails with `Header value must be str or bytes, not NoneType`.
+
+For providers whose API takes the key in a non-standard header, configure that
+provider's own key resolution (e.g. set `api_key: os.environ/MINIMAX_API_KEY`
+on the model and let the provider's transformation inject the right header),
+not `extra_headers`.
+
 ## License
 
 MIT

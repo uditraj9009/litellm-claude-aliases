@@ -11,19 +11,26 @@ config file LiteLLM will use, then delegates to the upstream ``litellm`` CLI.
 from __future__ import annotations
 
 import sys
+from typing import List, Optional, Tuple
 
 from . import aliases
 from .config import load_from_yaml
 from .patch import bootstrap
 
 
-def main() -> int:
-    # Pull out --config (and -c) so we can read the alias block before delegating.
-    config_path: str | None = None
-    passthrough: list[str] = []
+def parse_args(argv: List[str]) -> Tuple[Optional[str], List[str]]:
+    """Extract the ``--config``/``-c`` value and return ``(config_path, passthrough)``.
+
+    Supports both ``--config <path>`` (space-separated) and ``--config=<path>``
+    (equals form). Other flags are returned unchanged in ``passthrough`` so they
+    can be forwarded to the upstream ``litellm`` CLI.
+    """
+    config_path: Optional[str] = None
+    passthrough: List[str] = []
     skip_next = False
-    for arg in sys.argv[1:]:
+    for arg in argv:
         if skip_next:
+            config_path = arg
             passthrough.append(arg)
             skip_next = False
             continue
@@ -40,6 +47,11 @@ def main() -> int:
             passthrough.append(arg)
             continue
         passthrough.append(arg)
+    return config_path, passthrough
+
+
+def main() -> int:
+    config_path, passthrough = parse_args(sys.argv[1:])
 
     bootstrap()
     load_from_yaml(config_path)
